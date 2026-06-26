@@ -139,7 +139,7 @@ function animate() {
   if (modelLoaded && model) {
 
     // Rotation: 0 to 65 degrees, happens simultaneously with explosion
-    model.rotation.y = -(scrollProg * (Math.PI * 0.36));
+    model.rotation.y = -(scrollProg * (Math.PI * 0.38));
 
     if (mixer && duration > 0) {
       const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
