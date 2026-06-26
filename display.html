@@ -6,7 +6,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; background: transparent; }
-  #scroll-container { height: 500vh; position: relative; width: 100%; }
+  #scroll-container { height: 300vh; position: relative; width: 100%; }
   #canvas-wrapper {
     position: fixed; top: 0; left: 0;
     width: 100vw; height: 100vh;
@@ -138,10 +138,8 @@ function animate() {
 
   if (modelLoaded && model) {
 
-    // Rotation: 0 to 90 degrees, completes by 40% scroll
-    // After that the model stays side-on while explosion continues
-    const rotateProg = Math.min(scrollProg / 0.4, 1);
-    model.rotation.y = -(rotateProg * (Math.PI / 2));
+    // Rotation: 0 to 65 degrees, happens simultaneously with explosion
+    model.rotation.y = -(scrollProg * (Math.PI * 0.36));
 
     if (mixer && duration > 0) {
       const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
