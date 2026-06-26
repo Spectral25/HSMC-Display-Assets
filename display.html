@@ -34,17 +34,14 @@
 const wrapper   = document.getElementById('canvas-wrapper');
 const loadingEl = document.getElementById('loading');
 
-// ── Scene (transparent background) ───────────────────────────────────────────
 const scene = new THREE.Scene();
-// No scene.background set = transparent
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-// Start front-on, closer to model
-camera.position.set(0, 1, 8);
+camera.position.set(0, 0, 7);
 camera.lookAt(0, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setClearColor(0x000000, 0); // Fully transparent
+renderer.setClearColor(0x000000, 0);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 wrapper.appendChild(renderer.domElement);
@@ -57,7 +54,6 @@ const fillLight = new THREE.DirectionalLight(0x8888ff, 0.4);
 fillLight.position.set(-5, 0, -5);
 scene.add(fillLight);
 
-// ── State ─────────────────────────────────────────────────────────────────────
 let mixer       = null;
 let allActions  = [];
 let duration    = 0;
@@ -66,7 +62,6 @@ let model       = null;
 let prevAnimTime = 0;
 let scrollProg   = 0;
 
-// ── Load Model ────────────────────────────────────────────────────────────────
 const loader = new THREE.GLTFLoader();
 loader.load(
   'https://spectral25.github.io/HSMC-Display-Assets/HSMC_Build.glb',
@@ -77,10 +72,12 @@ loader.load(
     const box    = new THREE.Box3().setFromObject(model);
     const centre = box.getCenter(new THREE.Vector3());
     const size   = box.getSize(new THREE.Vector3());
-    // Increase scale value to bring model closer/larger
-    const scale  = 5.5 / Math.max(size.x, size.y, size.z);
-    model.scale.setScalar(scale);
-    model.position.sub(centre.multiplyScalar(scale));
+
+    // Fit model tightly to viewport height
+    const vFov    = camera.fov * (Math.PI / 180);
+    const fitScale = (2 * Math.tan(vFov / 2) * 7) / size.y * 0.92;
+    model.scale.setScalar(fitScale);
+    model.position.sub(centre.multiplyScalar(fitScale));
     scene.add(model);
 
     if (gltf.animations.length > 0) {
@@ -91,7 +88,6 @@ loader.load(
         action.play();
         allActions.push(action);
       });
-      // Hold at frame 0
       allActions.forEach(a => { a.time = 0; });
       mixer.update(0);
     }
@@ -111,24 +107,22 @@ loader.load(
   }
 );
 
-// ── Scroll ────────────────────────────────────────────────────────────────────
 window.addEventListener('scroll', () => {
   const scrollTop = window.scrollY || document.documentElement.scrollTop;
   const maxScroll  = document.documentElement.scrollHeight - window.innerHeight;
   scrollProg = maxScroll > 0 ? scrollTop / maxScroll : 0;
 });
 
-// ── Render Loop ───────────────────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
 
   if (modelLoaded && model) {
 
-    // Rotate model from front-on (0) to ~50 degrees as user scrolls
-    // Full rotation happens over the entire scroll range alongside the explosion
-    model.rotation.y = scrollProg * (Math.PI * 0.28);
+    // Rotation: opposite direction (negative), completes by 50% scroll
+    // so the side view is fully visible before the explosion finishes
+    const rotateProg = Math.min(scrollProg * 2, 1);
+    model.rotation.y = -(rotateProg * (Math.PI * 0.28));
 
-    // Scrub animation
     if (mixer && duration > 0) {
       const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
       const delta = targetTime - prevAnimTime;
@@ -141,7 +135,6 @@ function animate() {
 }
 animate();
 
-// ── Resize ────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
