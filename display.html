@@ -5,7 +5,7 @@
 <title>HSMC Display</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { background: #1a1a2e; width: 100%; }
+  html, body { width: 100%; background: transparent; }
   #scroll-container { height: 500vh; position: relative; width: 100%; }
   #canvas-wrapper {
     position: fixed; top: 0; left: 0;
@@ -17,38 +17,13 @@
     transform: translate(-50%,-50%);
     color: #fff; font-family: sans-serif; font-size: 16px; z-index: 3;
   }
-  #scroll-hint {
-    position: absolute; bottom: 40px; left: 50%;
-    transform: translateX(-50%);
-    color: rgba(255,255,255,0.6); font-family: sans-serif;
-    font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase;
-    animation: fade 2s ease-in-out infinite; z-index: 3;
-  }
-  @keyframes fade { 0%,100%{opacity:0.3} 50%{opacity:1} }
-
-  /* Debug HUD - remove once working */
-  #debug {
-    position: fixed; top: 10px; left: 10px;
-    background: rgba(0,0,0,0.85); color: #00ff88;
-    font-family: monospace; padding: 10px 14px;
-    font-size: 12px; z-index: 999; border-radius: 6px;
-    pointer-events: none; line-height: 1.7;
-  }
 </style>
 </head>
 <body>
 
-<div id="debug">
-  Scroll: <span id="d-scroll">0.000</span><br>
-  Target Time: <span id="d-target">0.000</span>s<br>
-  Duration: <span id="d-dur">---</span>s<br>
-  Clips found: <span id="d-clips">loading...</span>
-</div>
-
 <div id="scroll-container">
   <div id="canvas-wrapper">
     <div id="loading">Loading display...</div>
-    <div id="scroll-hint">Scroll to explore</div>
   </div>
 </div>
 
@@ -58,17 +33,18 @@
 
 const wrapper   = document.getElementById('canvas-wrapper');
 const loadingEl = document.getElementById('loading');
-const hintEl    = document.getElementById('scroll-hint');
 
-// ── Scene ────────────────────────────────────────────────────────────────────
+// ── Scene (transparent background) ───────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a2e);
+// No scene.background set = transparent
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(5, 3, 10);
+// Start front-on, closer to model
+camera.position.set(0, 1, 8);
 camera.lookAt(0, 0, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0); // Fully transparent
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 wrapper.appendChild(renderer.domElement);
@@ -81,56 +57,43 @@ const fillLight = new THREE.DirectionalLight(0x8888ff, 0.4);
 fillLight.position.set(-5, 0, -5);
 scene.add(fillLight);
 
-// ── State ────────────────────────────────────────────────────────────────────
-let mixer      = null;
-let allActions = [];
-let duration   = 0;
+// ── State ─────────────────────────────────────────────────────────────────────
+let mixer       = null;
+let allActions  = [];
+let duration    = 0;
 let modelLoaded = false;
-
-// This is the key variable: tracks where the mixer's time actually is,
-// so we can calculate an accurate delta each frame.
+let model       = null;
 let prevAnimTime = 0;
 let scrollProg   = 0;
 
-// ── Load Model ───────────────────────────────────────────────────────────────
+// ── Load Model ────────────────────────────────────────────────────────────────
 const loader = new THREE.GLTFLoader();
 loader.load(
   'https://spectral25.github.io/HSMC-Display-Assets/HSMC_Build.glb',
 
   function(gltf) {
-    const model = gltf.scene;
+    model = gltf.scene;
 
-    // Auto-fit model to view
     const box    = new THREE.Box3().setFromObject(model);
     const centre = box.getCenter(new THREE.Vector3());
     const size   = box.getSize(new THREE.Vector3());
-    const scale  = 4 / Math.max(size.x, size.y, size.z);
+    // Increase scale value to bring model closer/larger
+    const scale  = 5.5 / Math.max(size.x, size.y, size.z);
     model.scale.setScalar(scale);
     model.position.sub(centre.multiplyScalar(scale));
     scene.add(model);
 
-    // Report how many clips are in the GLB
-    document.getElementById('d-clips').textContent = gltf.animations.length;
-
     if (gltf.animations.length > 0) {
       mixer = new THREE.AnimationMixer(model);
-
-      // Play ALL clips — Blender often exports one clip per object
       gltf.animations.forEach(clip => {
         if (clip.duration > duration) duration = clip.duration;
         const action = mixer.clipAction(clip);
         action.play();
         allActions.push(action);
       });
-
-      document.getElementById('d-dur').textContent = duration.toFixed(3);
-
-      // Freeze everything at frame 0 immediately
+      // Hold at frame 0
       allActions.forEach(a => { a.time = 0; });
       mixer.update(0);
-
-    } else {
-      document.getElementById('d-clips').textContent = '0 — NO ANIMATIONS IN GLB!';
     }
 
     loadingEl.style.display = 'none';
@@ -148,36 +111,37 @@ loader.load(
   }
 );
 
-// ── Scroll Tracking ──────────────────────────────────────────────────────────
+// ── Scroll ────────────────────────────────────────────────────────────────────
 window.addEventListener('scroll', () => {
-  hintEl.style.opacity = '0';
   const scrollTop = window.scrollY || document.documentElement.scrollTop;
   const maxScroll  = document.documentElement.scrollHeight - window.innerHeight;
   scrollProg = maxScroll > 0 ? scrollTop / maxScroll : 0;
-  document.getElementById('d-scroll').textContent = scrollProg.toFixed(3);
 });
 
-// ── Render Loop ──────────────────────────────────────────────────────────────
+// ── Render Loop ───────────────────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
 
-  if (modelLoaded && mixer && duration > 0) {
-    const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
+  if (modelLoaded && model) {
 
-    // Delta-based scrubbing: tell the mixer exactly how far to move,
-    // in whichever direction. This is what Three.js actually expects.
-    const delta = targetTime - prevAnimTime;
-    prevAnimTime = targetTime;
-    mixer.update(delta);
+    // Rotate model from front-on (0) to ~50 degrees as user scrolls
+    // Full rotation happens over the entire scroll range alongside the explosion
+    model.rotation.y = scrollProg * (Math.PI * 0.28);
 
-    document.getElementById('d-target').textContent = targetTime.toFixed(3);
+    // Scrub animation
+    if (mixer && duration > 0) {
+      const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
+      const delta = targetTime - prevAnimTime;
+      prevAnimTime = targetTime;
+      mixer.update(delta);
+    }
   }
 
   renderer.render(scene, camera);
 }
 animate();
 
-// ── Resize ───────────────────────────────────────────────────────────────────
+// ── Resize ────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
