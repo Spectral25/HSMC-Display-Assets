@@ -104,7 +104,7 @@ let scrollProg = 0;
 
 const loader = new THREE.GLTFLoader();
 loader.load(
-  'https://spectral25.github.io/HSMC-Display-Assets/HSMC_Display.glb',
+  'https://raw.githubusercontent.com/Spectral25/HSMC-Display-Assets/main/HSMC_Build.glb',
   function(gltf) {
     model = gltf.scene;
     const box    = new THREE.Box3().setFromObject(model);
