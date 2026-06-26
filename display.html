@@ -44,15 +44,24 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setClearColor(0x000000, 0);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+// Fix for materials appearing black - correct colour space handling
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.physicallyCorrectLights = true;
+
 wrapper.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-dirLight.position.set(5, 10, 5);
+// Boosted lighting to make materials visible
+scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+dirLight.position.set(5, 10, 7);
 scene.add(dirLight);
-const fillLight = new THREE.DirectionalLight(0x8888ff, 0.4);
-fillLight.position.set(-5, 0, -5);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.8);
+fillLight.position.set(-5, 2, -5);
 scene.add(fillLight);
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
+rimLight.position.set(0, -5, -5);
+scene.add(rimLight);
 
 let mixer       = null;
 let allActions  = [];
@@ -69,11 +78,22 @@ loader.load(
   function(gltf) {
     model = gltf.scene;
 
+    // Fix material encoding on every mesh in the model
+    model.traverse(child => {
+      if (child.isMesh && child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(mat => {
+          if (mat.map)          mat.map.encoding          = THREE.sRGBEncoding;
+          if (mat.emissiveMap)  mat.emissiveMap.encoding  = THREE.sRGBEncoding;
+          mat.needsUpdate = true;
+        });
+      }
+    });
+
     const box    = new THREE.Box3().setFromObject(model);
     const centre = box.getCenter(new THREE.Vector3());
     const size   = box.getSize(new THREE.Vector3());
 
-    // Fit model tightly to viewport height
     const vFov    = camera.fov * (Math.PI / 180);
     const fitScale = (2 * Math.tan(vFov / 2) * 7) / size.y * 0.92;
     model.scale.setScalar(fitScale);
@@ -118,10 +138,10 @@ function animate() {
 
   if (modelLoaded && model) {
 
-    // Rotation: opposite direction (negative), completes by 50% scroll
-    // so the side view is fully visible before the explosion finishes
-    const rotateProg = Math.min(scrollProg * 2, 1);
-    model.rotation.y = -(rotateProg * (Math.PI * 0.28));
+    // Rotation: 0 to 90 degrees, completes by 40% scroll
+    // After that the model stays side-on while explosion continues
+    const rotateProg = Math.min(scrollProg / 0.4, 1);
+    model.rotation.y = -(rotateProg * (Math.PI / 2));
 
     if (mixer && duration > 0) {
       const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
