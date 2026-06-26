@@ -4,28 +4,23 @@
 <meta charset="utf-8">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #1a1a2e; overflow: hidden; height: 100vh; }
-  #outer { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; overflow-y: scroll; }
-  #scroll-space { height: 500vh; }
-  #canvas-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; }
-  #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color:#fff; font-family:sans-serif; font-size:16px; }
-  #scroll-hint { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,0.6); font-family:sans-serif; font-size:13px; letter-spacing:0.15em; text-transform:uppercase; animation:fade 2s ease-in-out infinite; }
+  /* Let the window handle standard scrolling instead of locking it to body */
+  html, body { background: #1a1a2e; min-height: 100%; }
+  #scroll-container { height: 500vh; position: relative; }
+  /* position: fixed ensures it sticks perfectly across all browsers */
+  #canvas-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; overflow: hidden; z-index: 1; }
+  #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color:#fff; font-family:sans-serif; font-size:16px; letter-spacing:0.1em; z-index: 2; }
+  #scroll-hint { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,0.6); font-family:sans-serif; font-size:13px; letter-spacing:0.15em; text-transform:uppercase; animation:fade 2s ease-in-out infinite; z-index: 2; }
   @keyframes fade { 0%,100%{opacity:0.3} 50%{opacity:1} }
-  #debug { position: fixed; top: 10px; right: 10px; color: lime; font-family: monospace; font-size: 16px; z-index: 999; background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius: 4px; }
 </style>
 </head>
 <body>
-
-<div id="outer">
-  <div id="scroll-space"></div>
+<div id="scroll-container">
+  <div id="canvas-wrapper">
+    <div id="loading">Loading display...</div>
+    <div id="scroll-hint">Scroll to explore</div>
+  </div>
 </div>
-
-<div id="canvas-wrapper">
-  <div id="loading">Loading display...</div>
-  <div id="scroll-hint">Scroll to explore</div>
-</div>
-
-<div id="debug">scroll: 0%</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -33,8 +28,6 @@
 const wrapper   = document.getElementById('canvas-wrapper');
 const loadingEl = document.getElementById('loading');
 const hintEl    = document.getElementById('scroll-hint');
-const debugEl   = document.getElementById('debug');
-const outerEl   = document.getElementById('outer');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a2e);
@@ -45,7 +38,7 @@ camera.lookAt(0, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap at 2 for performance
 wrapper.appendChild(renderer.domElement);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.8));
@@ -58,7 +51,7 @@ scene.add(fill);
 
 let mixer = null, action = null;
 let duration = 0, modelLoaded = false, model = null;
-let scrollProg = 0, prevAnimTime = 0;
+let scrollProg = 0;
 
 const loader = new THREE.GLTFLoader();
 loader.load(
@@ -77,10 +70,9 @@ loader.load(
       mixer    = new THREE.AnimationMixer(model);
       duration = gltf.animations[0].duration;
       action   = mixer.clipAction(gltf.animations[0]);
-      action.loop = THREE.LoopOnce;
-      action.clampWhenFinished = true;
+      
       action.play();
-      prevAnimTime = 0;
+      action.paused = true; // Pause it so it only moves when we tell it to
     }
 
     loadingEl.style.display = 'none';
@@ -90,24 +82,24 @@ loader.load(
   function(err) { loadingEl.textContent = 'Error loading model.'; console.error(err); }
 );
 
-// Scroll attached directly to the dedicated scroll div — no ambiguity
-outerEl.addEventListener('scroll', function() {
+// Standardized window scroll event listener
+window.addEventListener('scroll', () => {
   hintEl.style.opacity = '0';
-  const maxScroll = outerEl.scrollHeight - outerEl.clientHeight;
-  scrollProg = maxScroll > 0 ? outerEl.scrollTop / maxScroll : 0;
-  debugEl.textContent = 'scroll: ' + Math.round(scrollProg * 100) + '%';
+  const scrollTop = window.scrollY || document.documentElement.scrollTop;
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  scrollProg = maxScroll > 0 ? scrollTop / maxScroll : 0;
 });
 
 function animate() {
   requestAnimationFrame(animate);
 
-  if (modelLoaded && model && mixer && duration > 0) {
-    const targetTime = Math.min(scrollProg * duration, duration);
-    const delta = targetTime - prevAnimTime;
-    if (Math.abs(delta) > 0.0001) {
-      mixer.update(delta);
-      prevAnimTime = targetTime;
-    }
+  if (modelLoaded && mixer && duration > 0) {
+    // Determine target timestamp based on scroll progress
+    const targetTime = scrollProg * duration;
+    
+    // Direct manipulation method: Force the animation frame precisely 
+    action.time = Math.max(0, Math.min(targetTime, duration - 0.01));
+    mixer.update(0); 
   }
 
   renderer.render(scene, camera);
