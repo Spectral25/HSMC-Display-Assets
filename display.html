@@ -116,15 +116,14 @@ loader.load(
     scene.add(model);
 
     if (gltf.animations && gltf.animations.length > 0) {
-      mixer = new THREE.AnimationMixer(model);
-      duration = gltf.animations[0].duration;
-      dDur.textContent = duration.toFixed(2) + "s";
-      
-      // Traditional action initialization but explicitly paused
-      mainAction = mixer.clipAction(gltf.animations[0]);
-      mainAction.play();
-      mainAction.paused = true;
-    } else {
+    mixer = new THREE.AnimationMixer(model);
+    duration = gltf.animations[0].duration;
+    dDur.textContent = duration.toFixed(2) + "s";
+  
+    mainAction = mixer.clipAction(gltf.animations[0]);
+    mainAction.play(); 
+    // REMOVE OR COMMENT OUT: mainAction.paused = true;
+} else {
       dDur.textContent = "NO ANIMATIONS FOUND IN GLB";
     }
 
@@ -156,10 +155,11 @@ function animate() {
 
   if (modelLoaded && mixer && duration > 0) {
     const targetTime = scrollProg * duration;
-    const safeTime = Math.max(0, Math.min(targetTime, duration - 0.01));
+    const safeTime = Math.max(0, Math.min(targetTime, duration - 0.001));
     
-    // Explicit frame assignment combo that bypasses internal delta loops
+    // 1. Force the action time directly
     mainAction.time = safeTime;
+    // 2. Tell the mixer to look at the current track times immediately
     mixer.update(0); 
     
     dTime.textContent = safeTime.toFixed(2) + "s";
