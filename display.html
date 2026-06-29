@@ -44,14 +44,11 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setClearColor(0x000000, 0);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-// Fix for materials appearing black - correct colour space handling
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.physicallyCorrectLights = true;
 
 wrapper.appendChild(renderer.domElement);
 
-// Boosted lighting to make materials visible
 scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
 dirLight.position.set(5, 10, 7);
@@ -63,13 +60,32 @@ const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
 rimLight.position.set(0, -5, -5);
 scene.add(rimLight);
 
-let mixer       = null;
-let allActions  = [];
-let duration    = 0;
-let modelLoaded = false;
-let model       = null;
+let mixer        = null;
+let allActions   = [];
+let duration     = 0;
+let modelLoaded  = false;
+let model        = null;
 let prevAnimTime = 0;
 let scrollProg   = 0;
+
+// ── Scroll input ──────────────────────────────────────────────────────────────
+// Mode 1: postMessage from WordPress parent page (primary)
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'hsmc-scroll') {
+    scrollProg = e.data.progress;
+  }
+});
+
+// Mode 2: wheel events — fallback for viewing display.html directly
+const totalScrollPx = window.innerHeight * 3;
+let scrollAccum = 0;
+window.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  scrollAccum += e.deltaY;
+  scrollAccum = Math.max(0, Math.min(scrollAccum, totalScrollPx));
+  scrollProg  = scrollAccum / totalScrollPx;
+}, { passive: false });
+// ─────────────────────────────────────────────────────────────────────────────
 
 const loader = new THREE.GLTFLoader();
 loader.load(
@@ -78,13 +94,12 @@ loader.load(
   function(gltf) {
     model = gltf.scene;
 
-    // Fix material encoding on every mesh in the model
     model.traverse(child => {
       if (child.isMesh && child.material) {
         const mats = Array.isArray(child.material) ? child.material : [child.material];
         mats.forEach(mat => {
-          if (mat.map)          mat.map.encoding          = THREE.sRGBEncoding;
-          if (mat.emissiveMap)  mat.emissiveMap.encoding  = THREE.sRGBEncoding;
+          if (mat.map)         mat.map.encoding         = THREE.sRGBEncoding;
+          if (mat.emissiveMap) mat.emissiveMap.encoding = THREE.sRGBEncoding;
           mat.needsUpdate = true;
         });
       }
@@ -127,24 +142,16 @@ loader.load(
   }
 );
 
-window.addEventListener('scroll', () => {
-  const scrollTop = window.scrollY || document.documentElement.scrollTop;
-  const maxScroll  = document.documentElement.scrollHeight - window.innerHeight;
-  scrollProg = maxScroll > 0 ? scrollTop / maxScroll : 0;
-});
-
 function animate() {
   requestAnimationFrame(animate);
 
   if (modelLoaded && model) {
-
-    // Rotation: 0 to 65 degrees, happens simultaneously with explosion
     model.rotation.y = -(scrollProg * (Math.PI * 0.38));
 
     if (mixer && duration > 0) {
       const targetTime = Math.max(0, Math.min(scrollProg * duration, duration - 0.001));
-      const delta = targetTime - prevAnimTime;
-      prevAnimTime = targetTime;
+      const delta      = targetTime - prevAnimTime;
+      prevAnimTime     = targetTime;
       mixer.update(delta);
     }
   }
